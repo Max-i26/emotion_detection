@@ -1,41 +1,51 @@
 import streamlit as st
-import cv2
-import numpy as np
 import tensorflow as tf
-from mediapipe_utils import extract_face
+import numpy as np
+import cv2
+from PIL import Image
 
+# Load model
 model = tf.keras.models.load_model("model/emotion_model.h5")
 
-labels = ["Angry","Disgust","Fear","Happy","Sad","Surprise","Neutral"]
+labels = [
+    "Angry",
+    "Disgust",
+    "Fear",
+    "Happy",
+    "Sad",
+    "Surprise",
+    "Neutral"
+]
 
-st.title("😎 Real-Time Emotion Detection AI")
+st.title("Emotion Detection AI")
 
-run = st.checkbox("Start Webcam")
+uploaded_file = st.file_uploader(
+    "Upload Face Image",
+    type=["jpg", "jpeg", "png"]
+)
 
-cap = cv2.VideoCapture(0)
+if uploaded_file is not None:
 
-frame_window = st.image([])
+    image = Image.open(uploaded_file)
+    img = np.array(image)
 
-while run:
-    ret, frame = cap.read()
-    if not ret:
-        break
+    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
 
-    face = extract_face(frame)
+    face = cv2.resize(gray, (48, 48))
 
-    if face is not None:
-        img = face.astype("float32") / 255.0
-        img = np.expand_dims(img, axis=[0, -1])
+    face = face.astype("float32") / 255.0
+    face = np.expand_dims(face, axis=-1)
+    face = np.expand_dims(face, axis=0)
 
-        pred = model.predict(img, verbose=0)[0]
-        idx = np.argmax(pred)
+    prediction = model.predict(face)[0]
 
-        label = labels[idx]
-        conf = pred[idx]
+    idx = np.argmax(prediction)
 
-        cv2.putText(frame, f"{label} {conf:.2f}",
-                    (50,50),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    1,(0,255,0),2)
+    label = labels[idx]
+    confidence = prediction[idx] * 100
 
-    frame_window.image(frame, channels="BGR")
+    st.image(image, caption="Uploaded Image")
+
+    st.success(
+        f"Emotion: {label} ({confidence:.2f}%)"
+    )
