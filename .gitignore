@@ -1,0 +1,37 @@
+# Virtual Environments
+venv/
+venv311/
+env/
+
+# Python Cache
+__pycache__/
+*.pyc
+
+# Dataset
+dataset/
+
+# Model Checkpoints
+*.ckpt
+
+# Jupyter
+.ipynb_checkpoints/
+
+# VS Code
+.vscode/
+
+# System Files
+.DS_Store
+Thumbs.db
+
+# Large files
+*.zip
+*.rar
+
+# TensorFlow logs
+logs/
+
+# Temporary files
+temp/
+
+# Streamlit cache
+.streamlit/secrets.toml
