@@ -1,8 +1,7 @@
-tensorflow
-opencv-python
+tensorflow==2.15.0
+opencv-python-headless
+mediapipe==0.10.14
 numpy
-pandas
-matplotlib
-scikit-learn
-mediapipe
 streamlit
+pillow
+h5py
