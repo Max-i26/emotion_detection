@@ -1,7 +1,6 @@
-tensorflow==2.15.0
-opencv-python-headless
-mediapipe==0.10.14
-numpy
-streamlit
-pillow
-h5py
+streamlit==1.45.1
+tensorflow-cpu==2.15.0
+opencv-python-headless==4.10.0.84
+numpy==1.26.4
+pillow==10.4.0
+h5py==3.11.0
