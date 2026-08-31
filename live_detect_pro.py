@@ -61,7 +61,7 @@ face_detection = mp_face_detection.FaceDetection(
 )
 
 # ==========================================
-# 3. SMOOTHING BUFFER
+# 3. SMOOTHING BUFFER (10 Frames)
 # ==========================================
 emotion_buffer = deque(maxlen=10)
 
@@ -97,6 +97,7 @@ while cap.isOpened():
             bw = int(bbox.width * w)
             bh = int(bbox.height * h)
 
+            # Safe bounding box bounds
             x1 = max(0, x)
             y1 = max(0, y)
             x2 = min(w, x + bw)
@@ -107,21 +108,33 @@ while cap.isOpened():
             if face.size == 0:
                 continue
 
+            # ==========================================
+            # PREPROCESS (48x48 Grayscale for CNN Model)
+            # ==========================================
             face_gray = cv2.cvtColor(face, cv2.COLOR_BGR2GRAY)
             roi = cv2.resize(face_gray, (48, 48))
             roi = roi.astype("float32") / 255.0
-            roi = np.expand_dims(roi, axis=-1)
-            roi = np.expand_dims(roi, axis=0)
+            roi = np.expand_dims(roi, axis=-1)  # (48, 48, 1)
+            roi = np.expand_dims(roi, axis=0)   # (1, 48, 48, 1)
 
+            # ==========================================
+            # PREDICTION
+            # ==========================================
             pred = model.predict(roi, verbose=0)[0]
             idx = np.argmax(pred)
 
             emotion = labels[idx]
             confidence = float(pred[idx]) * 100
 
+            # ==========================================
+            # TEMPORAL SMOOTHING
+            # ==========================================
             emotion_buffer.append(emotion)
             smooth_emotion = Counter(emotion_buffer).most_common(1)[0][0]
 
+            # ==========================================
+            # VISUALIZATION
+            # ==========================================
             cv2.rectangle(
                 frame,
                 (x1, y1),
@@ -141,7 +154,7 @@ while cap.isOpened():
                 2
             )
 
-    cv2.imshow("Emotion Detection", frame)
+    cv2.imshow("Emotion AI Pro (MediaPipe)", frame)
 
     if cv2.waitKey(1) & 0xFF == ord("q"):
         break

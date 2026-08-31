@@ -1,5 +1,6 @@
 # Virtual Environments
 venv/
+venv_win/
 venv311/
 env/
 
@@ -26,6 +27,10 @@ Thumbs.db
 # Large files
 *.zip
 *.rar
+*.h5
+*.keras
+pip_cache/
+pip_tmp/
 
 # TensorFlow logs
 logs/
