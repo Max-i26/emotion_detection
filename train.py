@@ -1,25 +1,32 @@
-import tensorflow as tf
-import numpy as np
 import os
-
+import numpy as np
+import tensorflow as tf
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
-from tensorflow.keras.applications import EfficientNetB0
-from tensorflow.keras.layers import Dense, Dropout, GlobalAveragePooling2D, Input
-from tensorflow.keras.models import Model
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Conv2D, BatchNormalization, MaxPooling2D, Flatten, Dense, Dropout, Input, GlobalAveragePooling2D
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
+from tensorflow.keras.regularizers import l2
 from sklearn.utils.class_weight import compute_class_weight
 
 # =========================
-# GPU CHECK
+# GPU CONFIGURATION
 # =========================
-print("GPUs:", tf.config.list_physical_devices('GPU'))
+gpus = tf.config.list_physical_devices('GPU')
+print("Available GPUs:", gpus)
+if gpus:
+    try:
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+        print("✅ Dynamic GPU memory growth enabled.")
+    except Exception as e:
+        print("⚠️ GPU config warning:", e)
 
 # =========================
-# CONFIG
+# CONFIG & HYPERPARAMETERS
 # =========================
-IMG_SIZE = 96
+IMG_SIZE = 48
 BATCH_SIZE = 32
-EPOCHS = 40
+EPOCHS = 60
 NUM_CLASSES = 7
 
 train_dir = "dataset/train"
@@ -28,28 +35,28 @@ test_dir = "dataset/test"
 os.makedirs("model", exist_ok=True)
 
 # =========================
-# DATA AUGMENTATION (SAFE)
+# DATA AUGMENTATION
 # =========================
 train_datagen = ImageDataGenerator(
     rescale=1./255,
-    validation_split=0.2,
-
-    rotation_range=15,
+    validation_split=0.15,
+    rotation_range=20,
     width_shift_range=0.15,
     height_shift_range=0.15,
+    shear_range=0.15,
     zoom_range=0.15,
-    horizontal_flip=True
+    brightness_range=[0.8, 1.2],
+    horizontal_flip=True,
+    fill_mode="nearest"
 )
 
 test_datagen = ImageDataGenerator(rescale=1./255)
 
-# =========================
-# DATA LOADERS (RGB)
-# =========================
+# Data Loaders
 train_data = train_datagen.flow_from_directory(
     train_dir,
     target_size=(IMG_SIZE, IMG_SIZE),
-    color_mode="rgb",
+    color_mode="grayscale",
     class_mode="categorical",
     batch_size=BATCH_SIZE,
     subset="training",
@@ -59,7 +66,7 @@ train_data = train_datagen.flow_from_directory(
 val_data = train_datagen.flow_from_directory(
     train_dir,
     target_size=(IMG_SIZE, IMG_SIZE),
-    color_mode="rgb",
+    color_mode="grayscale",
     class_mode="categorical",
     batch_size=BATCH_SIZE,
     subset="validation",
@@ -69,7 +76,7 @@ val_data = train_datagen.flow_from_directory(
 test_data = test_datagen.flow_from_directory(
     test_dir,
     target_size=(IMG_SIZE, IMG_SIZE),
-    color_mode="rgb",
+    color_mode="grayscale",
     class_mode="categorical",
     batch_size=BATCH_SIZE,
     shuffle=False
@@ -83,67 +90,115 @@ class_weights = compute_class_weight(
     classes=np.unique(train_data.classes),
     y=train_data.classes
 )
-
 class_weights = dict(enumerate(class_weights))
-print("Class Weights:", class_weights)
+print("Balanced Class Weights:", class_weights)
 
 # =========================
-# MODEL (EfficientNetB0)
+# FOCAL LOSS WITH LABEL SMOOTHING
 # =========================
-base_model = EfficientNetB0(
-    include_top=False,
-    weights="imagenet",
-    input_shape=(IMG_SIZE, IMG_SIZE, 3)
-)
+def categorical_focal_loss(gamma=2.0, alpha=None, label_smoothing=0.1):
+    def focal_loss(y_true, y_pred):
+        # Apply label smoothing
+        if label_smoothing > 0:
+            num_classes = tf.cast(tf.shape(y_true)[-1], y_true.dtype)
+            y_true = y_true * (1.0 - label_smoothing) + (label_smoothing / num_classes)
+            
+        y_pred = tf.clip_by_value(y_pred, 1e-7, 1.0 - 1e-7)
+        cross_entropy = -y_true * tf.math.log(y_pred)
+        weight = tf.pow(1.0 - y_pred, gamma)
+        
+        if alpha is not None:
+            weight = weight * alpha
+            
+        loss = weight * cross_entropy
+        return tf.reduce_sum(loss, axis=-1)
+    return focal_loss
 
-base_model.trainable = False  # first stage freeze
+# =========================
+# UPGRADED 4-STAGE CNN ARCHITECTURE
+# =========================
+def build_upgraded_cnn():
+    model = Sequential([
+        Input(shape=(IMG_SIZE, IMG_SIZE, 1)),
+        
+        # Block 1
+        Conv2D(64, (3, 3), padding='same', activation='relu', kernel_regularizer=l2(1e-4)),
+        BatchNormalization(),
+        Conv2D(64, (3, 3), padding='same', activation='relu', kernel_regularizer=l2(1e-4)),
+        BatchNormalization(),
+        MaxPooling2D((2, 2)),
+        Dropout(0.25),
+        
+        # Block 2
+        Conv2D(128, (3, 3), padding='same', activation='relu', kernel_regularizer=l2(1e-4)),
+        BatchNormalization(),
+        Conv2D(128, (3, 3), padding='same', activation='relu', kernel_regularizer=l2(1e-4)),
+        BatchNormalization(),
+        MaxPooling2D((2, 2)),
+        Dropout(0.3),
+        
+        # Block 3
+        Conv2D(256, (3, 3), padding='same', activation='relu', kernel_regularizer=l2(1e-4)),
+        BatchNormalization(),
+        Conv2D(256, (3, 3), padding='same', activation='relu', kernel_regularizer=l2(1e-4)),
+        BatchNormalization(),
+        MaxPooling2D((2, 2)),
+        Dropout(0.35),
+        
+        # Block 4
+        Conv2D(512, (3, 3), padding='same', activation='relu', kernel_regularizer=l2(1e-4)),
+        BatchNormalization(),
+        Conv2D(512, (3, 3), padding='same', activation='relu', kernel_regularizer=l2(1e-4)),
+        BatchNormalization(),
+        MaxPooling2D((2, 2)),
+        Dropout(0.4),
+        
+        # Head
+        GlobalAveragePooling2D(),
+        Dense(256, activation='relu', kernel_regularizer=l2(1e-4)),
+        BatchNormalization(),
+        Dropout(0.5),
+        Dense(NUM_CLASSES, activation='softmax')
+    ])
+    return model
 
-inputs = Input(shape=(IMG_SIZE, IMG_SIZE, 3))
-x = base_model(inputs, training=False)
-x = GlobalAveragePooling2D()(x)
-x = Dense(256, activation="relu")(x)
-x = Dropout(0.5)(x)
-outputs = Dense(NUM_CLASSES, activation="softmax")(x)
-
-model = Model(inputs, outputs)
+model = build_upgraded_cnn()
+model.summary()
 
 model.compile(
-    optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4),
-    loss="categorical_crossentropy",
+    optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
+    loss=categorical_focal_loss(gamma=2.0, label_smoothing=0.1),
     metrics=["accuracy"]
 )
 
-# =========================
-# CALLBACKS
-# =========================
+# Callbacks
 callbacks = [
     EarlyStopping(
         monitor="val_accuracy",
-        patience=8,
+        patience=12,
         restore_best_weights=True
     ),
-
     ReduceLROnPlateau(
         monitor="val_loss",
         factor=0.5,
-        patience=3,
+        patience=4,
         min_lr=1e-7,
         verbose=1
     ),
-
     ModelCheckpoint(
-        "model/emotion_model.keras",
+        "model/emotion_model_weights.h5",
         monitor="val_accuracy",
         save_best_only=True,
+        save_weights_only=True,
         verbose=1
     )
 ]
 
 # =========================
-# STAGE 1 - TRAIN HEAD
+# TRAIN MODEL
 # =========================
-print("\n🔥 STAGE 1: Training classifier head")
-model.fit(
+print("\n🔥 Starting Model Training with Focal Loss & Label Smoothing...")
+history = model.fit(
     train_data,
     validation_data=val_data,
     epochs=EPOCHS,
@@ -151,34 +206,12 @@ model.fit(
     callbacks=callbacks
 )
 
-# =========================
-# STAGE 2 - FINE TUNING
-# =========================
-print("\n🔥 STAGE 2: Fine-tuning base model")
+# Save final weights and full model
+model.save_weights("model/emotion_model.h5")
+print("\n✅ Training completed! Weights saved to model/emotion_model.h5")
 
-base_model.trainable = True
-
-# freeze early layers
-for layer in base_model.layers[:-30]:
-    layer.trainable = False
-
-model.compile(
-    optimizer=tf.keras.optimizers.Adam(learning_rate=1e-5),
-    loss="categorical_crossentropy",
-    metrics=["accuracy"]
-)
-
-model.fit(
-    train_data,
-    validation_data=val_data,
-    epochs=15,
-    class_weight=class_weights,
-    callbacks=callbacks
-)
-
-# =========================
-# SAVE FINAL MODEL
-# =========================
-model.save("model/emotion_model.h5")
-
-print("\n🔥 TRAINING COMPLETE - MODEL SAVED")
+# Evaluate on test set
+print("\nEvaluating on Test Set...")
+test_loss, test_acc = model.evaluate(test_data)
+print(f"Test Loss: {test_loss:.4f}")
+print(f"Test Accuracy: {test_acc*100:.2f}%")

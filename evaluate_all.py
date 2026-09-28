@@ -3,37 +3,64 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.models import load_model, Sequential
-from tensorflow.keras.layers import Conv2D, BatchNormalization, MaxPooling2D, Flatten, Dense, Dropout, Input
+from tensorflow.keras.layers import Conv2D, BatchNormalization, MaxPooling2D, GlobalAveragePooling2D, Dense, Dropout, Input
+from tensorflow.keras.regularizers import l2
 from sklearn.metrics import classification_report, confusion_matrix
 import json
 
 CLASS_LABELS = ["Angry", "Disgust", "Fear", "Happy", "Sad", "Surprise", "Neutral"]
 
-def evaluate_custom_cnn():
-    print("=" * 60)
-    print("Evaluating Custom CNN (model/emotion_model.h5) on 48x48 Grayscale")
-    print("=" * 60)
-    
+def build_upgraded_cnn():
     model = Sequential([
         Input(shape=(48, 48, 1)),
-        Conv2D(64, (3, 3), activation='relu', name='conv2d'),
-        BatchNormalization(name='batch_normalization'),
-        MaxPooling2D((2, 2), name='max_pooling2d'),
         
-        Conv2D(128, (3, 3), activation='relu', name='conv2d_1'),
-        BatchNormalization(name='batch_normalization_1'),
-        MaxPooling2D((2, 2), name='max_pooling2d_1'),
+        # Block 1
+        Conv2D(64, (3, 3), padding='same', activation='relu', kernel_regularizer=l2(1e-4)),
+        BatchNormalization(),
+        Conv2D(64, (3, 3), padding='same', activation='relu', kernel_regularizer=l2(1e-4)),
+        BatchNormalization(),
+        MaxPooling2D((2, 2)),
+        Dropout(0.25),
         
-        Conv2D(256, (3, 3), activation='relu', name='conv2d_2'),
-        BatchNormalization(name='batch_normalization_2'),
-        MaxPooling2D((2, 2), name='max_pooling2d_2'),
+        # Block 2
+        Conv2D(128, (3, 3), padding='same', activation='relu', kernel_regularizer=l2(1e-4)),
+        BatchNormalization(),
+        Conv2D(128, (3, 3), padding='same', activation='relu', kernel_regularizer=l2(1e-4)),
+        BatchNormalization(),
+        MaxPooling2D((2, 2)),
+        Dropout(0.3),
         
-        Flatten(name='flatten'),
-        Dense(512, activation='relu', name='dense'),
-        Dropout(0.5, name='dropout'),
-        Dense(7, activation='softmax', name='dense_1')
+        # Block 3
+        Conv2D(256, (3, 3), padding='same', activation='relu', kernel_regularizer=l2(1e-4)),
+        BatchNormalization(),
+        Conv2D(256, (3, 3), padding='same', activation='relu', kernel_regularizer=l2(1e-4)),
+        BatchNormalization(),
+        MaxPooling2D((2, 2)),
+        Dropout(0.35),
+        
+        # Block 4
+        Conv2D(512, (3, 3), padding='same', activation='relu', kernel_regularizer=l2(1e-4)),
+        BatchNormalization(),
+        Conv2D(512, (3, 3), padding='same', activation='relu', kernel_regularizer=l2(1e-4)),
+        BatchNormalization(),
+        MaxPooling2D((2, 2)),
+        Dropout(0.4),
+        
+        # Head
+        GlobalAveragePooling2D(),
+        Dense(256, activation='relu', kernel_regularizer=l2(1e-4)),
+        BatchNormalization(),
+        Dropout(0.5),
+        Dense(7, activation='softmax')
     ])
+    return model
+
+def evaluate_custom_cnn():
+    print("=" * 60)
+    print("Evaluating Upgraded 4-Stage ConvNet (model/emotion_model.h5) on 48x48 Grayscale")
+    print("=" * 60)
     
+    model = build_upgraded_cnn()
     weights_path = "model/emotion_model.h5"
     if not os.path.exists(weights_path):
         print(f"Error: {weights_path} not found.")
@@ -61,14 +88,14 @@ def evaluate_custom_cnn():
     report_text = classification_report(true_classes, predicted_classes, target_names=CLASS_LABELS, digits=4)
     cm = confusion_matrix(true_classes, predicted_classes).tolist()
     
-    print("\nCustom CNN Results:")
+    print("\nUpgraded 4-Stage ConvNet Results:")
     print(f"Test Loss:     {loss:.4f}")
     print(f"Test Accuracy: {accuracy*100:.2f}%")
     print("\nClassification Report:\n", report_text)
     print("\nConfusion Matrix:\n", np.array(cm))
     
     return {
-        "model_name": "Custom CNN (48x48 Grayscale)",
+        "model_name": "Upgraded 4-Stage ConvNet (48x48 Grayscale)",
         "test_loss": float(loss),
         "test_accuracy": float(accuracy),
         "classification_report_text": report_text,

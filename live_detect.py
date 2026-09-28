@@ -2,37 +2,63 @@ import cv2
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Conv2D, BatchNormalization, MaxPooling2D, Flatten, Dense, Dropout, Input
+from tensorflow.keras.layers import Conv2D, BatchNormalization, MaxPooling2D, GlobalAveragePooling2D, Dense, Dropout, Input
+from tensorflow.keras.regularizers import l2
 from collections import deque, Counter
 import os
 
 # ==========================================
-# 1. LOAD MODEL (Robust Architecture + Weights)
+# 1. LOAD MODEL (Upgraded 4-Stage ConvNet)
 # ==========================================
-def load_emotion_model(weights_path="model/emotion_model.h5"):
+def build_upgraded_cnn():
     model = Sequential([
         Input(shape=(48, 48, 1)),
-        Conv2D(64, (3, 3), activation='relu', name='conv2d'),
-        BatchNormalization(name='batch_normalization'),
-        MaxPooling2D((2, 2), name='max_pooling2d'),
         
-        Conv2D(128, (3, 3), activation='relu', name='conv2d_1'),
-        BatchNormalization(name='batch_normalization_1'),
-        MaxPooling2D((2, 2), name='max_pooling2d_1'),
+        # Block 1
+        Conv2D(64, (3, 3), padding='same', activation='relu', kernel_regularizer=l2(1e-4)),
+        BatchNormalization(),
+        Conv2D(64, (3, 3), padding='same', activation='relu', kernel_regularizer=l2(1e-4)),
+        BatchNormalization(),
+        MaxPooling2D((2, 2)),
+        Dropout(0.25),
         
-        Conv2D(256, (3, 3), activation='relu', name='conv2d_2'),
-        BatchNormalization(name='batch_normalization_2'),
-        MaxPooling2D((2, 2), name='max_pooling2d_2'),
+        # Block 2
+        Conv2D(128, (3, 3), padding='same', activation='relu', kernel_regularizer=l2(1e-4)),
+        BatchNormalization(),
+        Conv2D(128, (3, 3), padding='same', activation='relu', kernel_regularizer=l2(1e-4)),
+        BatchNormalization(),
+        MaxPooling2D((2, 2)),
+        Dropout(0.3),
         
-        Flatten(name='flatten'),
-        Dense(512, activation='relu', name='dense'),
-        Dropout(0.5, name='dropout'),
-        Dense(7, activation='softmax', name='dense_1')
+        # Block 3
+        Conv2D(256, (3, 3), padding='same', activation='relu', kernel_regularizer=l2(1e-4)),
+        BatchNormalization(),
+        Conv2D(256, (3, 3), padding='same', activation='relu', kernel_regularizer=l2(1e-4)),
+        BatchNormalization(),
+        MaxPooling2D((2, 2)),
+        Dropout(0.35),
+        
+        # Block 4
+        Conv2D(512, (3, 3), padding='same', activation='relu', kernel_regularizer=l2(1e-4)),
+        BatchNormalization(),
+        Conv2D(512, (3, 3), padding='same', activation='relu', kernel_regularizer=l2(1e-4)),
+        BatchNormalization(),
+        MaxPooling2D((2, 2)),
+        Dropout(0.4),
+        
+        # Head
+        GlobalAveragePooling2D(),
+        Dense(256, activation='relu', kernel_regularizer=l2(1e-4)),
+        BatchNormalization(),
+        Dropout(0.5),
+        Dense(7, activation='softmax')
     ])
-    
+    return model
+
+def load_emotion_model(weights_path="model/emotion_model.h5"):
+    model = build_upgraded_cnn()
     if not os.path.exists(weights_path):
         raise FileNotFoundError(f"Model weights file not found at: {weights_path}")
-        
     model.load_weights(weights_path)
     print(f"✅ Model weights loaded successfully from: {weights_path}")
     return model
@@ -72,7 +98,6 @@ cap = cv2.VideoCapture(0)
 
 if not cap.isOpened():
     print("❌ Error: Could not open camera (index 0). Please ensure camera is connected.")
-    print("If you are running in WSL, make sure camera is shared via USBIPD or run on native Windows.")
 
 print("\n🚀 Starting Real-Time Emotion AI (MediaPipe)...")
 print("👉 Press 'q' on your keyboard inside the window to exit.\n")
@@ -122,24 +147,9 @@ while cap.isOpened():
             emotion_buffer.append(emotion)
             smooth_emotion = Counter(emotion_buffer).most_common(1)[0][0]
 
-            cv2.rectangle(
-                frame,
-                (x1, y1),
-                (x2, y2),
-                (0, 255, 0),
-                2
-            )
-
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
             text = f"{smooth_emotion} ({confidence:.1f}%)"
-            cv2.putText(
-                frame,
-                text,
-                (x1, max(20, y1 - 10)),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.8,
-                (0, 255, 0),
-                2
-            )
+            cv2.putText(frame, text, (x1, max(20, y1 - 10)), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
 
     cv2.imshow("Emotion Detection", frame)
 

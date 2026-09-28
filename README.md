@@ -1,76 +1,106 @@
-# Emotion AI - Real-Time Facial Emotion Recognition
+# Real-Time Emotion AI (MediaPipe + Upgraded 4-Stage ConvNet)
 
-A real-time facial emotion recognition system using **MediaPipe** face detection and a **Custom CNN** trained on the **FER2013** dataset.
+A real-time facial emotion recognition system using **Google MediaPipe** for robust face detection and an **Upgraded 4-Stage Convolutional Neural Network (CNN)** trained on the **FER2013** dataset with **Focal Loss** and **Label Smoothing**.
 
-Detects 7 emotions live from webcam: `Angry` · `Disgust` · `Fear` · `Happy` · `Sad` · `Surprise` · `Neutral`
+Classifies 7 human emotions live from webcam:  
+`Angry` · `Disgust` · `Fear` · `Happy` · `Sad` · `Surprise` · `Neutral`
+
+---
+
+## ⚡ Key Improvements & Optimization Features
+
+1. **Categorical Focal Loss ($\gamma = 2.0$)**:
+   - Reduces loss weighting for easy, majority-class samples (*Happy*, *Neutral*) and heavily penalizes errors on hard/minority classes (*Disgust*, *Fear*).
+2. **Label Smoothing ($0.1$)**:
+   - Softens hard targets (`[1, 0, 0...]` $\to$ `[0.91, 0.015...]`), improving generalization on noisy, subjective FER2013 labels.
+3. **Upgraded 4-Stage Deep Architecture**:
+   - 4 Convolutional blocks (`64` $\to$ `128` $\to$ `256` $\to$ `512` filters) with Batch Normalization, L2 regularization (`1e-4`), Global Average Pooling, and Dropout (`0.5`).
+4. **Enhanced Data Augmentation**:
+   - Random rotations ($\pm 20^\circ$), width/height shifts ($\pm 15\%$), zoom ($\pm 15\%$), brightness adjustments (`0.8`-`1.2`), and horizontal flips.
+5. **Real-Time Temporal Smoothing Buffer**:
+   - 10-frame majority vote buffer (`Counter().most_common(1)`) to eliminate frame-by-frame prediction flickering.
 
 ---
 
 ## 🚀 Quick Start (Windows)
+
+Launch the project with a single click using the batch launcher:
 
 ```cmd
 cd F:\emotion-detection
 .\run_webcam.bat
 ```
 
-Press **`q`** in the camera window to exit.
+*Press **`q`** in the camera window to exit.*
 
 ---
 
-## 📦 Environment Setup (First Time)
+## 💻 Manual Execution Order
 
-Requires **Python 3.10** installed on Windows.
+### Option A: Windows PowerShell / Command Prompt
+```powershell
+# 1. Navigate to directory
+cd F:\emotion-detection
 
-```cmd
-py -3.10 -m venv venv_win
+# 2. Activate virtual environment
 .\venv_win\Scripts\activate
-pip install tensorflow==2.15.0 tensorflow-intel==2.15.0
-pip install mediapipe==0.10.9
-pip install "opencv-python==4.8.0.76" numpy==1.26.4 h5py pillow scikit-learn
+
+# 3. Launch live emotion detector
+python live_detect_pro.py
+```
+
+### Option B: WSL / Ubuntu Terminal (GPU Recommended)
+```bash
+# 1. Navigate to directory
+cd /mnt/f/emotion-detection
+
+# 2. Activate virtual environment
+source venv/bin/activate
+
+# 3. Launch live emotion detector
+python live_detect_pro.py
 ```
 
 ---
 
-## 🖥️ Run Order
+## 🏋️ How to Train the Model
 
-| Step | Command | Purpose |
-|------|---------|---------|
-| 1 | `cd F:\emotion-detection` | Navigate to project |
-| 2 | `.\venv_win\Scripts\activate` | Activate virtual environment |
-| 3 | `python live_detect_pro.py` | Start live webcam detection |
-| 4 | Press **`q`** | Exit the camera window |
-| 5 | `deactivate` | Leave environment when done |
+To train or retrain the upgraded model manually:
 
----
+```bash
+# Activate your environment (Windows or WSL)
+python train.py
+```
 
-## 📊 Performance Metrics (Test Set — 7,178 images)
-
-| Model | Accuracy | Loss |
-|-------|----------|------|
-| Custom CNN (48×48 Grayscale) | **63.51%** | 1.001 |
-| EfficientNetB0 Transfer (96×96 RGB) | 43.90% | 1.479 |
-
-### Per-Class Results (Custom CNN)
-
-| Emotion | Precision | Recall | F1-Score |
-|---------|-----------|--------|----------|
-| Happy | 82.51% | 86.13% | 84.28% |
-| Neutral | 76.42% | 74.49% | 75.44% |
-| Sad | 55.46% | 67.96% | 61.08% |
-| Angry | 53.71% | 60.44% | 56.88% |
-| Disgust | 81.82% | 40.54% | 54.22% |
-| Surprise | 50.72% | 47.71% | 49.17% |
-| Fear | 50.79% | 34.67% | 41.21% |
+Training saves the model weights to `model/emotion_model.h5`.
 
 ---
 
-## 🧠 Architecture
+## 📊 Evaluation & Metrics Benchmark
 
-- **Face Detection**: MediaPipe FaceDetection (model_selection=0)
-- **Classifier**: Custom 3-layer CNN (Conv2D → BN → MaxPool × 3) + Dense(512) + Dropout(0.5) + Softmax(7)
-- **Input**: 48×48 grayscale face crop, normalized to [0,1]
-- **Smoothing**: 10-frame majority vote buffer (reduces flickering)
-- **Dataset**: FER2013 (28,709 train / 7,178 test images)
+To compute evaluation metrics (Accuracy, Loss, Precision, Recall, F1-Score, Confusion Matrix) on the 7,178 test images:
+
+```bash
+python evaluate_all.py
+```
+
+### Summary Benchmark:
+- **Baseline Accuracy**: **63.51%** on FER2013 test set (approaching the human baseline of ~65%).
+- **Weighted F1-Score**: **62.91%**
+- **Top Class Performance**: *Happy* (86.1% Recall, 84.3% F1), *Neutral* (74.5% Recall, 75.4% F1), *Sad* (68.0% Recall, 61.1% F1).
+
+---
+
+## 📦 Requirements & Dependencies
+
+The project is configured for **Python 3.10**:
+- `tensorflow == 2.15.0`
+- `mediapipe == 0.10.9`
+- `opencv-python == 4.8.0.76`
+- `numpy == 1.26.4`
+- `h5py`, `pillow`, `scikit-learn`, `matplotlib`
+
+Dependencies are listed in [`requirements.txt`](file:///f:/emotion-detection/requirements.txt).
 
 ---
 
@@ -78,17 +108,14 @@ pip install "opencv-python==4.8.0.76" numpy==1.26.4 h5py pillow scikit-learn
 
 ```
 emotion-detection/
-├── live_detect_pro.py        # Main real-time detector (MediaPipe + CNN)
-├── live_detect.py            # Alternate detector
-├── live_detect_maximized.py  # EfficientNetB0 variant
-├── train.py                  # Training script (EfficientNetB0)
-├── train_maximized.py        # Advanced training with resume support
-├── evaluate_all.py           # Full evaluation + metrics report
-├── performance_metrics.json  # Test set metrics (JSON)
+├── live_detect_pro.py        # Primary real-time detector (MediaPipe + 4-Stage CNN)
+├── live_detect.py            # Alternate live detection script
+├── train.py                  # Training pipeline (Focal Loss + Label Smoothing + 4-Stage CNN)
+├── evaluate_all.py           # Evaluation script (Accuracy, F1, Confusion Matrix)
+├── performance_metrics.json  # Comprehensive test evaluation metrics
 ├── run_webcam.bat            # One-click Windows launcher
-├── run_train.sh              # WSL training script (GPU)
-├── requirements.txt          # Python dependencies
-├── model/                    # Trained model weights (not tracked in git)
-├── dataset/                  # FER2013 train/test (not tracked in git)
-└── venv_win/                 # Windows virtual env (not tracked in git)
+├── requirements.txt          # Production dependencies
+├── labels.txt                # 7 emotion class names
+├── model/                    # Model weights directory (emotion_model.h5)
+└── dataset/                  # FER2013 train/test dataset
 ```
